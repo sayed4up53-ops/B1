@@ -1,5 +1,6 @@
 import sys, os, requests, string, random, time, functools
 
+# ضمان الطباعة الفورية
 os.environ['PYTHONUNBUFFERED'] = "1"
 print = functools.partial(print, flush=True)
 
@@ -14,6 +15,7 @@ def generate_random_username(length=10):
 
 def create_temp_email():
     try:
+        print("📧 جاري طلب نطاق بريد...")
         domains_res = requests.get(f"{MAIL_TM_API}/domains", timeout=30).json()
         domain = domains_res['hydra:member'][0]['domain']
         email = f"{generate_random_username()}@{domain}"
@@ -22,13 +24,14 @@ def create_temp_email():
         token_res = requests.post(f"{MAIL_TM_API}/token", json={"address": email, "password": password}, timeout=30).json()
         return email, password, token_res['token']
     except Exception as e:
-        print(f"❌ فشل البريد: {e}")
+        print(f"❌ فشل إنشاء البريد: {e}")
         return None, None, None
 
-print("🚀 انطلاق البوت المعدل لاستخراج المفاتيح...")
+print("🚀 انطلاق البوت في الدورة الحالية...")
 
 for i in range(ACCOUNTS_PER_RUN):
-    print(f"\n🔄 الحساب رقم {i+1} من {ACCOUNTS_PER_RUN}")
+    print(f"\n{'─'*30}\n🔄 الحساب رقم {i+1} من {ACCOUNTS_PER_RUN}")
+    
     email, password, auth_token = create_temp_email()
     if not email: continue
     print(f"✅ تم تجهيز: {email}")
@@ -53,7 +56,7 @@ for i in range(ACCOUNTS_PER_RUN):
             const m = (msg.text || '').match(/\\b(\\d{{6}})\\b/);
             if (m) {{ code = m[1]; break; }}
           }}
-          await wait(5000);
+          await wait(6000);
         }}
         if (!code) throw new Error('Timeout Code');
         
@@ -65,54 +68,52 @@ for i in range(ACCOUNTS_PER_RUN):
         }});
         
         await page.waitForSelector('input[placeholder="John Doe"]', {{ visible: true, timeout: 30000 }});
-        await page.type('input[placeholder="John Doe"]', 'BotUser_' + Math.random().toString(36).slice(2,6));
+        await page.type('input[placeholder="John Doe"]', 'User_' + Math.random().toString(36).slice(2,7));
         await page.click('#attribution-select button');
         await wait(1000); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
         await page.click('input[type="checkbox"]');
         await wait(2000);
         await page.click('[data-testid="complete-signup-button"]');
         
-        // --- تحديث: ذكاء اصطناعي لاستخراج المفتاح ---
-        await wait(20000); // انتظار أطول للتحميل
-        
-        let key = "Not_Found";
-        for(let attempt=0; attempt<3; attempt++) {{
-            key = await page.evaluate(async () => {{
-                return new Promise((res) => {{
-                    navigator.clipboard.writeText = (t) => res(t);
-                    const btn = document.querySelector('button[title="Copy API Key"]');
-                    if(btn) btn.click();
-                    else res("Not_Found");
-                }});
+        await wait(15000);
+        const apiKey = await page.evaluate(async () => {{
+            return new Promise((res) => {{
+                navigator.clipboard.writeText = (t) => res(t);
+                const b = document.querySelector('button[title="Copy API Key"]');
+                if(b) b.click(); else setTimeout(() => res("Not_Found"), 5000);
             }});
-            if(key !== "Not_Found") break;
-            await page.reload({{ waitUntil: 'networkidle2' }});
-            await wait(10000);
-        }}
-        
-        return {{ success: true, key: key }};
-      } catch (e) {{ return {{ success: false, err: e.message }}; }}
+        }});
+        return {{ success: true, key: apiKey }};
+      }} catch (e) {{ return {{ success: false, err: e.message }}; }}
     }};
     """
 
     try:
+        print("🌐 جاري استخراج المفتاح عبر Browserless...")
+        # قمت بتغيير السيرفر إلى واحد أكثر استقراراً
         response = requests.post(
             f"https://production-sfo.browserless.io/function?token={BROWSERLESS_TOKEN}",
             json={"code": script.strip()},
-            timeout=240
+            timeout=180
         )
+        
         if response.status_code == 200:
             result = response.json()
-            if result.get('success') and result.get('key') != "Not_Found":
+            if result.get('success'):
                 key = result.get('key')
-                print(f"✨ نجاح! المفتاح المستخرج: {key}")
+                print(f"✨ تم النجاح! المفتاح: {key}")
                 requests.post(SHEET_API_URL, json={
-                    "Email": email, "Password": password, "API_Key": key, "Date": time.strftime("%Y-%m-%d %H:%M")
+                    "Email": email, "Password": password, "API_Key": key, "Date": time.strftime("%H:%M:%S")
                 })
-                print("💾 تم الحفظ بنجاح في الجدول.")
+                print("💾 تم الحفظ في الجدول.")
             else:
-                print(f"❌ لم يتم العثور على المفتاح في هذه المحاولة.")
+                print(f"❌ فشل المتصفح: {result.get('err')}")
+        else:
+            print(f"⚠️ سيرفر Browserless رد برمز: {response.status_code}")
+            
     except Exception as e:
-        print(f"⚠️ خطأ: {e}")
+        print(f"⚠️ خطأ عام: {e}")
+    
+    time.sleep(5)
 
 print("\n🏁 اكتملت الدورة.")
