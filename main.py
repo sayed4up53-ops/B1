@@ -2,9 +2,10 @@ import requests
 import string
 import random
 import time
-import sys
+import os
 
 # --- الإعدادات ---
+# يفضل استخدام Secret في GitHub وضع التوكن هناك باسم BROWSERLESS_TOKEN
 BROWSERLESS_TOKEN = "2TkB7Bi7dGeDk2p601084c4fa52bbda0003cd2f2114350d9b"
 SHEET_API_URL = "https://api.sheetbest.com/sheets/b40a7f06-4a7a-4fe4-a01c-d81372d85a87"
 MAIL_TM_API = "https://api.mail.tm"
@@ -18,81 +19,63 @@ def create_temp_email():
         domain = domains_res['hydra:member'][0]['domain']
         email = f"{generate_random_username()}@{domain}"
         password = generate_random_username(12)
-        
-        # إنشاء الحساب
-        reg_res = requests.post(f"{MAIL_TM_API}/accounts", json={"address": email, "password": password}, timeout=10)
-        if reg_res.status_code != 201:
-            return None, None, None
-            
-        # الحصول على التوكن
+        requests.post(f"{MAIL_TM_API}/accounts", json={"address": email, "password": password}, timeout=10)
         token_res = requests.post(f"{MAIL_TM_API}/token", json={"address": email, "password": password}, timeout=10).json()
         return email, password, token_res['token']
-    except Exception as e:
-        print(f"⚠️ خطأ في إنشاء الإيميل: {e}")
+    except Exception: 
         return None, None, None
 
-# حدد عدد الحسابات التي تريد إنشاءها في المرة الواحدة (مثلاً 5) لتجنب الحظر أو التوقف المفاجئ
-MAX_ACCOUNTS = 5 
-
-for i in range(MAX_ACCOUNTS):
-    print(f"\n🔄 محاولة إنشاء الحساب رقم {i+1}...")
+account_count = 0
+# تشغيل لعدد معين من المرات لتجنب استهلاك موارد GitHub بشكل لا نهائي
+for _ in range(10): 
+    account_count += 1
+    print(f"\n🔄 محاولة إنشاء الحساب رقم {account_count}...")
     email, password, auth_token = create_temp_email()
-    
-    if not email:
-        print("⏭️ فشل إنشاء إيميل مؤقت، تخطي...")
-        continue
+    if not email: continue
 
-    # الكود البرمجي الذي يرسل لـ Browserless
+    # تم تصحيح الأقواس هنا (كل { أصبحت {{ وكل } أصبحت }})
     script = f"""
     export default async ({{ page }}) => {{
       const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
       
       async function getCode() {{
         try {{
-          const res = await fetch('https://api.mail.tm/messages', {{ 
-            headers: {{ 'Authorization': 'Bearer {auth_token}' }} 
-          }});
+          const res = await fetch('https://api.mail.tm/messages', {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }});
           const data = await res.json();
           const msg = data['hydra:member']?.[0];
           if (msg) {{
-            const detail = await fetch(`https://api.mail.tm/messages/${{msg.id}}`, {{ 
-                headers: {{ 'Authorization': 'Bearer {auth_token}' }} 
-            }}).then(r => r.json());
+            const detail = await fetch(`https://api.mail.tm/messages/${{msg.id}}`, {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }}).then(r => r.json());
             const match = (detail.text || '').match(/\\b(\\d{{6}})\\b/);
             return match ? match[1] : null;
           }}
-        } catch(e) {{}}
+        }} catch(e) {{ }}
         return null;
       }}
 
       try {{
         await page.goto('https://account.browserless.io/signup/email/?plan=free', {{ waitUntil: 'networkidle2' }});
-        await page.waitForSelector('input[placeholder="Your Email"]');
         await page.type('input[placeholder="Your Email"]', '{email}');
-        
         await page.evaluate(() => {{
           const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Verify'));
           if (btn) btn.click();
         }});
 
         let code = null;
-        for (let j = 0; j < 15; j++) {{
+        for (let j = 0; j < 20; j++) {{
           code = await getCode();
           if (code) break;
-          await wait(5000);
+          await wait(4000);
         }}
         if (!code) throw new Error('Email Code Timeout');
 
-        await page.waitForSelector('input[placeholder="000 000"]');
         await page.type('input[placeholder="000 000"]', code);
         await wait(2000);
-        
         await page.evaluate(() => {{
             const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Submit code'));
             if (btn) btn.click();
         }});
 
-        await page.waitForSelector('input[placeholder="John Doe"]', {{ visible: true, timeout: 15000 }});
+        await page.waitForSelector('input[placeholder="John Doe"]', {{ visible: true }});
         await page.type('input[placeholder="John Doe"]', 'Dev_' + Math.random().toString(36).substring(7));
         
         await page.click('#attribution-select button');
@@ -101,10 +84,10 @@ for i in range(MAX_ACCOUNTS):
         await page.keyboard.press('Enter');
         
         await page.click('input[type="checkbox"]');
-        await wait(1000);
+        await wait(2000);
         await page.click('[data-testid="complete-signup-button"]');
 
-        await wait(10000); 
+        await wait(10000);
 
         let copyBtn = await page.$('button[title="Copy API Key"]');
         if (!copyBtn) {{
@@ -138,20 +121,14 @@ for i in range(MAX_ACCOUNTS):
             timeout=300
         )
         result = response.json()
-        
         if result.get('success') and result.get('apiKey') != "Failed_to_Capture":
             api_key = result.get('apiKey')
             print(f"✅ نجاح: {api_key}")
             row_data = {"Email": email, "Password": password, "API_Key": api_key, "Date": time.strftime("%Y-%m-%d %H:%M:%S")}
             requests.post(SHEET_API_URL, json=row_data)
-            print("💾 تم الحفظ في SheetBest.")
         else:
-            print(f"❌ خطأ من المتصفح: {result.get('error', 'فشل التقاط المفتاح')}")
-            
+            print(f"❌ خطأ: {result.get('error', 'Capture Failed')}")
     except Exception as e:
         print(f"⚠️ خطأ اتصال: {e}")
 
-    print("💤 استراحة 10 ثوانٍ قبل الحساب التالي...")
     time.sleep(10)
-
-print("\n✅ انتهت العملية.")
