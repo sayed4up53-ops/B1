@@ -1,140 +1,119 @@
-import sys
-import os
-import requests
-import string
-import random
-import time
-import functools
+import sys, os, requests, string, random, time, functools
 
-# ضمان الطباعة الفورية في GitHub Actions
+# ضمان الطباعة الفورية
 os.environ['PYTHONUNBUFFERED'] = "1"
 print = functools.partial(print, flush=True)
 
 # --- الإعدادات ---
 BROWSERLESS_TOKEN = "2TkB7Bi7dGeDk2p601084c4fa52bbda0003cd2f2114350d9b"
-# استبدل الرابط أدناه برابط Google Script (/exec) لضمان العمل المجاني
 SHEET_API_URL = "https://api.sheetbest.com/sheets/b40a7f06-4a7a-4fe4-a01c-d81372d85a87" 
 MAIL_TM_API = "https://api.mail.tm"
 ACCOUNTS_PER_RUN = 5 
-
-print("🚀 بدأ البوت العمل الآن...")
 
 def generate_random_username(length=10):
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
 
 def create_temp_email():
     try:
-        print("📧 جاري إنشاء بريد مؤقت...")
-        domains_res = requests.get(f"{MAIL_TM_API}/domains").json()
+        print("📧 جاري طلب نطاق بريد...")
+        domains_res = requests.get(f"{MAIL_TM_API}/domains", timeout=30).json()
         domain = domains_res['hydra:member'][0]['domain']
         email = f"{generate_random_username()}@{domain}"
         password = generate_random_username(12)
-        requests.post(f"{MAIL_TM_API}/accounts", json={"address": email, "password": password})
-        token_res = requests.post(f"{MAIL_TM_API}/token", json={"address": email, "password": password}).json()
-        print(f"✅ تم إنشاء البريد: {email}")
+        requests.post(f"{MAIL_TM_API}/accounts", json={"address": email, "password": password}, timeout=30)
+        token_res = requests.post(f"{MAIL_TM_API}/token", json={"address": email, "password": password}, timeout=30).json()
         return email, password, token_res['token']
     except Exception as e:
-        print(f"❌ خطأ في البريد: {e}")
+        print(f"❌ فشل إنشاء البريد: {e}")
         return None, None, None
 
-# --- الدورة الرئيسية ---
+print("🚀 انطلاق البوت في الدورة الحالية...")
+
 for i in range(ACCOUNTS_PER_RUN):
-    print(f"\n──────────────────────────────")
-    print(f"🔄 جاري العمل على الحساب رقم {i+1} من {ACCOUNTS_PER_RUN}...")
+    print(f"\n{'─'*30}\n🔄 الحساب رقم {i+1} من {ACCOUNTS_PER_RUN}")
     
     email, password, auth_token = create_temp_email()
-    if not email:
-        print("⚠️ فشل في الحصول على بريد، سيتم التخطي...")
-        continue
-    
+    if not email: continue
+    print(f"✅ تم تجهيز: {email}")
+
     script = f"""
     export default async ({{ page }}) => {{
-      const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-      async function getCode() {{
-        const res = await fetch('https://api.mail.tm/messages', {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }});
-        const data = await res.json();
-        const msg = data['hydra:member']?.[0];
-        if (msg) {{
-          const detail = await fetch(`https://api.mail.tm/messages/${{msg.id}}`, {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }}).then(r => r.json());
-          const match = (detail.text || '').match(/\\b(\\d{{6}})\\b/);
-          return match ? match[1] : null;
-        }}
-        return null;
-      }}
+      const wait = (ms) => new Promise(res => setTimeout(res, ms));
       try {{
-        await page.goto('https://account.browserless.io/signup/email/?plan=free', {{ waitUntil: 'networkidle2' }});
+        await page.goto('https://account.browserless.io/signup/email/?plan=free', {{ waitUntil: 'networkidle2', timeout: 60000 }});
         await page.type('input[placeholder="Your Email"]', '{email}');
         await page.evaluate(() => {{
-          const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Verify'));
-          if (btn) btn.click();
+          const b = Array.from(document.querySelectorAll('button')).find(x => x.innerText.includes('Verify'));
+          if (b) b.click();
         }});
+        
         let code = null;
-        for (let j = 0; j < 20; j++) {{
-          code = await getCode();
-          if (code) break;
-          await wait(5000);
+        for (let j = 0; j < 15; j++) {{
+          const res = await fetch('https://api.mail.tm/messages', {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }});
+          const data = await res.json();
+          if (data['hydra:member']?.[0]) {{
+            const msg = await fetch(`https://api.mail.tm/messages/${{data['hydra:member'][0].id}}`, {{ headers: {{ 'Authorization': 'Bearer {auth_token}' }} }}).then(r => r.json());
+            const m = (msg.text || '').match(/\\b(\\d{{6}})\\b/);
+            if (m) {{ code = m[1]; break; }}
+          }}
+          await wait(6000);
         }}
-        if (!code) throw new Error('Email Code Timeout');
+        if (!code) throw new Error('Timeout Code');
+        
         await page.type('input[placeholder="000 000"]', code);
-        await wait(2000);
+        await wait(3000);
         await page.evaluate(() => {{
-            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Submit code'));
-            if (btn) btn.click();
+          const b = Array.from(document.querySelectorAll('button')).find(x => x.innerText.includes('Submit'));
+          if (b) b.click();
         }});
-        await page.waitForSelector('input[placeholder="John Doe"]', {{ visible: true }});
-        await page.type('input[placeholder="John Doe"]', 'Bot_' + Math.random().toString(36).substring(7));
+        
+        await page.waitForSelector('input[placeholder="John Doe"]', {{ visible: true, timeout: 30000 }});
+        await page.type('input[placeholder="John Doe"]', 'User_' + Math.random().toString(36).slice(2,7));
         await page.click('#attribution-select button');
         await wait(1000); await page.keyboard.press('ArrowDown'); await page.keyboard.press('Enter');
         await page.click('input[type="checkbox"]');
-        await wait(5000);
+        await wait(2000);
         await page.click('[data-testid="complete-signup-button"]');
         
-        await wait(10000);
-        let copyBtn = await page.$('button[title="Copy API Key"]');
-        if (!copyBtn) {{ await page.reload({{ waitUntil: 'networkidle2' }}); await wait(5000); }}
-        
-        await page.waitForSelector('button[title="Copy API Key"]', {{ timeout: 20000 }});
-        const fullKey = await page.evaluate(async () => {{
-            return new Promise((resolve) => {{
-                navigator.clipboard.writeText = async (text) => resolve(text);
-                document.querySelector('button[title="Copy API Key"]').click();
-                setTimeout(() => resolve("Failed"), 5000);
+        await wait(15000);
+        const apiKey = await page.evaluate(async () => {{
+            return new Promise((res) => {{
+                navigator.clipboard.writeText = (t) => res(t);
+                const b = document.querySelector('button[title="Copy API Key"]');
+                if(b) b.click(); else setTimeout(() => res("Not_Found"), 5000);
             }});
         }});
-        return {{ success: true, apiKey: fullKey }};
-      }} catch (e) {{ return {{ success: false, error: e.message }}; }}
+        return {{ success: true, key: apiKey }};
+      }} catch (e) {{ return {{ success: false, err: e.message }}; }}
     }};
     """
 
     try:
-        print("🌐 جاري تنفيذ الأتمتة في Browserless...")
+        print("🌐 جاري استخراج المفتاح عبر Browserless...")
+        # قمت بتغيير السيرفر إلى واحد أكثر استقراراً
         response = requests.post(
             f"https://production-sfo.browserless.io/function?token={BROWSERLESS_TOKEN}",
-            headers={"Content-Type": "application/json"},
             json={"code": script.strip()},
-            timeout=300
+            timeout=180
         )
-        result = response.json()
         
-        if result.get('success'):
-            api_key = result.get('apiKey')
-            print(f"✨ تم استخراج المفتاح بنجاح: {api_key}")
-            
-            row_data = {{
-                "Email": email, 
-                "Password": password, 
-                "API_Key": api_key, 
-                "Date": time.strftime("%Y-%m-%d %H:%M")
-            }}
-            print("📡 جاري إرسال البيانات...")
-            res = requests.post(SHEET_API_URL, json=row_data, allow_redirects=True)
-            print(f"💾 استجابة المستودع: {res.status_code}")
+        if response.status_code == 200:
+            result = response.json()
+            if result.get('success'):
+                key = result.get('key')
+                print(f"✨ تم النجاح! المفتاح: {key}")
+                requests.post(SHEET_API_URL, json={
+                    "Email": email, "Password": password, "API_Key": key, "Date": time.strftime("%H:%M:%S")
+                })
+                print("💾 تم الحفظ في الجدول.")
+            else:
+                print(f"❌ فشل المتصفح: {result.get('err')}")
         else:
-            print(f"❌ فشلت الأتمتة: {result.get('error')}")
+            print(f"⚠️ سيرفر Browserless رد برمز: {response.status_code}")
             
     except Exception as e:
-        print(f"⚠️ خطأ: {e}")
-
+        print(f"⚠️ خطأ عام: {e}")
+    
     time.sleep(5)
 
-print("\n✅ انتهت المهمة.")
+print("\n🏁 اكتملت الدورة.")
