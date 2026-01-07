@@ -1,24 +1,29 @@
 name: Browserless Auto Bot
 
 on:
-  schedule:
-    - cron: '*/15 * * * *'
-  workflow_dispatch:
+  workflow_dispatch: # يسمح لك بتشغيل البوت يدوياً من تبويب Actions
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Code
+      # 1. جلب الكود من المستودع
+      - name: Checkout code
         uses: actions/checkout@v3
 
+      # 2. إعداد بيئة بايثون
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install Requests
-        run: pip install requests
+      # 3. تثبيت المكتبات اللازمة (هذا هو سبب الفشل السابق)
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
 
-      - name: Execute Main Script
-        run: python main.py
+      # 4. تشغيل البوت
+      - name: Run script
+        run: python main.py # تأكد أن اسم ملف البايثون هو main.py
