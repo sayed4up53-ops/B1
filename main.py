@@ -6,13 +6,13 @@ import random
 import time
 import functools
 
-# --- التعديل المنقذ لضمان الطباعة الفورية في GitHub Actions ---
+# ضمان الطباعة الفورية في GitHub Actions
 os.environ['PYTHONUNBUFFERED'] = "1"
 print = functools.partial(print, flush=True)
 
 # --- الإعدادات ---
 BROWSERLESS_TOKEN = "2TkB7Bi7dGeDk2p601084c4fa52bbda0003cd2f2114350d9b"
-# تأكد من استبدال XXXXX برابط الـ Web App الخاص بك الذي ينتهي بـ /exec
+# استبدل الرابط أدناه برابط Google Script (/exec) لضمان العمل المجاني
 SHEET_API_URL = "https://api.sheetbest.com/sheets/b40a7f06-4a7a-4fe4-a01c-d81372d85a87" 
 MAIL_TM_API = "https://api.mail.tm"
 ACCOUNTS_PER_RUN = 5 
@@ -43,9 +43,10 @@ for i in range(ACCOUNTS_PER_RUN):
     print(f"🔄 جاري العمل على الحساب رقم {i+1} من {ACCOUNTS_PER_RUN}...")
     
     email, password, auth_token = create_temp_email()
-    if not email: continue
+    if not email:
+        print("⚠️ فشل في الحصول على بريد، سيتم التخطي...")
+        continue
     
-    # السكريبت الذي يعمل داخل Browserless
     script = f"""
     export default async ({{ page }}) => {{
       const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -106,7 +107,7 @@ for i in range(ACCOUNTS_PER_RUN):
     """
 
     try:
-        print("🌐 جاري تنفيذ الأتمتة داخل Browserless...")
+        print("🌐 جاري تنفيذ الأتمتة في Browserless...")
         response = requests.post(
             f"https://production-sfo.browserless.io/function?token={BROWSERLESS_TOKEN}",
             headers={"Content-Type": "application/json"},
@@ -119,51 +120,21 @@ for i in range(ACCOUNTS_PER_RUN):
             api_key = result.get('apiKey')
             print(f"✨ تم استخراج المفتاح بنجاح: {api_key}")
             
-            # إرسال البيانات إلى جوجل
-            row_data = {
+            row_data = {{
                 "Email": email, 
                 "Password": password, 
                 "API_Key": api_key, 
                 "Date": time.strftime("%Y-%m-%d %H:%M")
-            }
-            print("📡 جاري إرسال البيانات إلى Google Sheets...")
+            }}
+            print("📡 جاري إرسال البيانات...")
             res = requests.post(SHEET_API_URL, json=row_data, allow_redirects=True)
-            print(f"💾 استجابة جوجل: {res.status_code} - {res.text}")
+            print(f"💾 استجابة المستودع: {res.status_code}")
         else:
             print(f"❌ فشلت الأتمتة: {result.get('error')}")
             
     except Exception as e:
-        print(f"⚠️ خطأ غير متوقع: {e}")
+        print(f"⚠️ خطأ: {e}")
 
-    print(f"⏳ انتظار 10 ثوانٍ قبل الحساب التالي...")
-    time.sleep(10)
+    time.sleep(5)
 
-print("\n✅ انتهت المهمة الحالية.")
-        return {{ success: true, apiKey: fullKey }};
-      }} catch (e) {{ 
-        return {{ success: false, error: e.message }}; 
-      }}
-    }};
-    """
-
-    try:
-        response = requests.post(
-            f"https://production-sfo.browserless.io/function?token={BROWSERLESS_TOKEN}",
-            headers={"Content-Type": "application/json"},
-            json={"code": script.strip()},
-            timeout=300
-        )
-        result = response.json()
-        if result.get('success') and result.get('apiKey') != "Failed_to_Capture":
-            api_key = result.get('apiKey')
-            print(f"✅ نجاح: {api_key}")
-            row_data = {"Email": email, "Password": password, "API_Key": api_key, "Date": time.strftime("%Y-%m-%d %H:%M:%S")}
-            requests.post(SHEET_API_URL, json=row_data)
-            print("💾 تم الحفظ.")
-        else:
-            print(f"❌ خطأ: {result.get('error', 'Capture Failed')}")
-    except Exception as e:
-        print(f"⚠️ خطأ اتصال: {e}")
-
-    print("💤 استراحة 10 ثوانٍ...")
-    time.sleep(10)
+print("\n✅ انتهت المهمة.")
